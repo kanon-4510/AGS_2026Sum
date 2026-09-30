@@ -1,0 +1,233 @@
+#include <DxLib.h>
+#include "../Application.h"
+#include "../Common/Color.h"
+#include "../Manager/SceneManager.h"
+#include "../Manager/ResourceManager.h"
+#include "../Manager/InputManager.h"
+#include "../Manager/SoundManager.h"
+#include "../Utility/AsoUtility.h"
+#include "Phase/QuestPhase.h"
+#include "Phase/ClassWorkPhase.h"
+#include "Phase/JobChangePhase.h"
+#include "Phase/EventPhase.h"
+#include "GameScene.h"
+
+//デフォルトコンストラクタ
+GameScene::GameScene(void)
+{
+	turn_ = 0;
+	phase_ = QUEST_PHASE::PHASE_QUEST;
+	playerStatus_ = new PlayerStatus();
+}
+
+//デストラクタ
+GameScene::~GameScene(void)
+{
+	delete playerStatus_;
+	playerStatus_ = nullptr;
+}
+
+//初期化処理
+void GameScene::Init(void)
+{
+	turn_ = 1;
+	phase_ = QUEST_PHASE::PHASE_QUEST;
+	playerImg_ = ResourceManager::GetInstance().Load(ResourceManager::SRC::PLAYER).handleId_;
+	stageImg_ = ResourceManager::GetInstance().Load(ResourceManager::SRC::GAME_SCENE).handleId_;
+	messageBoxImg_ = ResourceManager::GetInstance().Load(ResourceManager::SRC::MESSAGE_BOX).handleId_;
+}
+
+//更新処理
+void GameScene::Update(void)
+{
+	//まず現在のフェーズのUpdateを回す
+	if (currentPhase_) 
+	{
+		currentPhase_->Update();
+
+		//フェーズが終わった瞬間の処理
+		if (currentPhase_->IsFinished())
+		{
+			//フェーズの終了結果を一時保存してからリセットする
+			auto result = currentPhase_->phaseResult_;
+			currentPhase_.reset();
+
+			//クエストなどをクリアして、ターンを進める場合
+			if (result == PhaseBase::PHASE_RESULT::NEXT_TURN)
+			{
+				turn_++; //ターンを進める
+
+				//4ターン目になった瞬間の処理
+				if (turn_ == EVENT_TRIGGER_TURN && playerStatus_->currentRoute_ == PLAYER_ROUTE::NONE)
+				{
+					//メニュー選択に戻さずそのままイベントを強制スタート
+					currentPhase_ = std::make_unique<EventPhase>(playerStatus_);
+				}
+			}
+			//CANCELの場合などは turn_ は増えず、そのまま拠点メニューに戻る
+			isInputBlocked_ = true; //次のフレームは入力を受け付けないフラグを立てる
+			return;
+		}
+	}
+
+	//入力ブロック中なら解除して飛ばす
+	if (isInputBlocked_) 
+	{
+		isInputBlocked_ = false;
+		return;
+	}
+
+	//フェーズが実行中でない場合（メニュー選択）
+	//上のif文の中でreturnしていれば、最終ターン終了時はここは実行されない
+	if (!currentPhase_) 
+	{
+		ProcessPhaseSelection();
+		//３ターン目までチュートリアルの処理
+		if (SceneManager::GetInstance().IsTutorialEnabled())
+		{
+			if (turn_ <= TUTORUAL_JOB_CHANGE_TURN)
+			{
+				ProcessTutorial();
+			}
+		}
+
+		if (turn_ == MAX_TURN)
+		{
+			phase_ = QUEST_PHASE::PHASE_QUEST;
+		}
+
+		ProcessPhaseDecision();
+
+		//BGM再生
+		SoundManager::GetInstance().Play(SoundManager::SRC::GAME_BGM, Sound::TIMES::LOOP);
+	}
+}
+
+//描画処理
+void GameScene::Draw(void)
+{
+	if (currentPhase_)
+	{
+		//各フェーズの描画処理を呼び出す
+		currentPhase_->Draw();
+	}
+	else
+	{
+		DrawGraph(0, 0, stageImg_, TRUE);
+		SetFontSize(STATUS_FONT_SIZE);
+		//メニュー画面の描画処理
+		DrawFormatString(TURN_TEXT_X, TURN_TEXT_Y, Color::WHITE, "現在のターン \n   %d / %d", turn_, MAX_TURN);
+		//現在のルートを文字列に変換して表示する
+		std::string routeName = "未選択";
+		switch (playerStatus_->currentRoute_)
+		{
+		case PLAYER_ROUTE::BREAKTHROUGH: routeName = "打破"; break;
+		case PLAYER_ROUTE::SALVATION:    routeName = "救世"; break;
+		case PLAYER_ROUTE::TRUTH:        routeName = "真理"; break;
+		case PLAYER_ROUTE::SELFLESS:     routeName = "無欲"; break;
+		}
+		// ターンの少し下に黄色っぽく表示
+		DrawFormatString(ROUTE_TEXT_X, ROUTE_TEXT_Y, Color::RED, "現在のルート: %s", routeName.c_str());
+		SetFontSize(DEFAULT_FONT_SIZE);
+
+		//チュートリアルが有効で、かつターンが3以下の場合にチュートリアルを描画する
+		if (SceneManager::GetInstance().IsTutorialEnabled() && turn_ <= TUTORUAL_JOB_CHANGE_TURN)
+		{
+			DrawTutorial();
+		}
+
+		int color = GetColor(255, 255, 255);
+		int selectColor = GetColor(255, 255, 0); //選択中は黄色にする
+		SetFontSize(MENU_FONT_SIZE);
+		Utility::DrawCommandMenu(COMMAND_MENU_X, COMMAND_MENU_Y, { "クエスト", "授業", "資格試験" }, (phase_), COMMAND_MENU_STEP_Y);
+		SetFontSize(DEFAULT_FONT_SIZE);
+
+		DrawGraph(PLAYER_IMG_X, PLAYER_IMG_Y, playerImg_, TRUE);
+
+		//仮でプレイヤー情報を表示
+		playerStatus_->Draw();
+	}
+}
+
+
+//解放処理
+void GameScene::Release(void)
+{
+	SoundManager::GetInstance().Stop(SoundManager::SRC::GAME_BGM);
+}
+
+void GameScene::ProcessTutorial(void)
+{
+	//チュートリアルの処理
+	if (turn_ == TUTORUAL_QUEST_TURN)
+	{
+		phase_ = QUEST_PHASE::PHASE_QUEST;
+	}
+	else if (turn_ == TUTORUAL_CLASSWORK_TURN)
+	{
+		phase_ = QUEST_PHASE::PHASE_CLASSWORK;
+	}
+	else if (turn_ == TUTORUAL_JOB_CHANGE_TURN)
+	{
+		phase_ = QUEST_PHASE::PHASE_JOB_CHANGE;
+	}
+}
+
+void GameScene::DrawTutorial(void)
+{
+	DrawGraph(MESSAGE_BOX_X, MESSAGE_BOX_Y, messageBoxImg_, TRUE);
+
+	SetFontSize(STATUS_FONT_SIZE);
+	//DrawString(TUTORIAL_X + 50, MESSAGE_BOX_Y + 15, "チュートリアル", Color::BLACK);
+
+	//チュートリアルの処理
+	if (turn_ == TUTORUAL_QUEST_TURN)
+	{
+		DrawFormatString(TUTORIAL_X, TUTORIAL_Y, Color::BLACK, "まずはクエストに行こう。\nクエストで敵と戦って\n経験値を獲得しよう。");
+	}
+	else if (turn_ == TUTORUAL_CLASSWORK_TURN)
+	{
+		DrawFormatString(TUTORIAL_X, TUTORIAL_Y, Color::BLACK, "次は授業を受けよう。\n好きな科目を選んで\n技能を伸ばそう。");
+	}
+	else if (turn_ == TUTORUAL_JOB_CHANGE_TURN)
+	{
+		DrawFormatString(TUTORIAL_X - TUTORIAL_STEP3_OFFSET_X, TUTORIAL_Y, Color::BLACK, "ここで職業を選択することで\n様々な恩恵を得られる。");
+	}
+	SetFontSize(DEFAULT_FONT_SIZE);
+}
+
+void GameScene::ProcessPhaseSelection(void)
+{
+	//安全に int 型の変数に写し取る
+	int currentIndex = static_cast<int>(phase_);
+	int maxItems = static_cast<int>(QUEST_PHASE::PHASE_FINAL);
+
+	//int型の変数を渡して、メニュー選択処理を行う（currentIndexの中身が更新される）
+	Utility::ProcessCommandMenuSelection(currentIndex, maxItems);
+
+	//更新された int の値を、安全に元の enum class 型に戻して代入する
+	phase_ = static_cast<QUEST_PHASE>(currentIndex);
+}
+
+void GameScene::ProcessPhaseDecision()
+{
+	if (ins_.IsTrgDown(KEY_INPUT_RETURN) || 
+		ins_.IsPadBtnTrgDown(InputManager::JOYPAD_NO::PAD1, InputManager::JOYPAD_BTN::DOWN))
+	{
+		//選択音
+		SoundManager::GetInstance().Play(SoundManager::SRC::SELECT_SE, Sound::TIMES::ONCE);
+
+		switch (phase_) 
+		{
+		case QUEST_PHASE::PHASE_QUEST:
+			currentPhase_ = std::make_unique<QuestPhase>(playerStatus_,*this);
+			break;
+		case QUEST_PHASE::PHASE_CLASSWORK:
+			currentPhase_ = std::make_unique<ClassWorkPhase>(playerStatus_,*this);
+			break;
+		case QUEST_PHASE::PHASE_JOB_CHANGE:
+			currentPhase_ = std::make_unique<JobChangePhase>(playerStatus_, *this);
+			break;
+		}
+	}
+}

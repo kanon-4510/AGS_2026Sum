@@ -1,0 +1,232 @@
+#pragma once
+#include <string>
+#include <vector>
+#include "JobData.h"
+#include "MagicDataBase.h"
+
+	//ルート
+enum class PLAYER_ROUTE
+{
+	NONE,           //未選択（3ターン）
+	BREAKTHROUGH,   //打破
+	SALVATION,      //救世
+	TRUTH,          //真理
+	SELFLESS        //無欲
+};
+
+class PlayerStatus
+{
+public:
+
+	constexpr static int FONT_SIZE = 20;			//fontサイズ
+
+	constexpr static int STATUS_X = 450;			//ステータスの描画位置X
+	constexpr static int STATUS_COLOR = 0xFFFFFF;	//ステータスの描画色
+
+	constexpr static int STATUS_BONUS_X = 570;	//ステータスのボーナス分の描画位置X
+	constexpr static int STATUS_BONUS_COLOR = 0x00FF00;	//ステータスのボーナス分の描画色
+
+	constexpr static int NEED_EXP = 30;			//必要経験値
+	constexpr static int RATE_BASE = 100;		//ステータスアップの確率の基準値
+	constexpr static int SKILL_UP_RATE = 70;	//ステータスアップの確率
+
+	constexpr static int PLAYER_POS_X = 900;	//プレイヤーの描画位置X
+	constexpr static int PLAYER_POS_Y = 240;	//プレイヤーの描画位置Y
+
+	static constexpr int DAMAGE_BLINK_FRAME_DIVISOR = 2; // 点滅速度（フレーム除数）
+	static constexpr int DAMAGE_BLINK_CYCLE_MODULO = 3;  // 点滅周期（剰余）
+
+	constexpr static int ANIM_COUNT_ATTACK = 5;	//アニメーションのフレーム数
+	constexpr static int ANIM_COUNT_DAMAGE = 10;	//アニメーションのフレーム数
+	constexpr static int ANIM_MOVE_PIXELS = 3;	//動かすピクセル数
+
+	// SetDrawBright用カラー定数
+	static constexpr int DAMAGE_TINT_R = 255;
+	static constexpr int DAMAGE_TINT_G = 0;
+	static constexpr int DAMAGE_TINT_B = 0;
+	static constexpr int NORMAL_TINT_RGB = 255;
+
+	//DrawQuestImages 用のレイアウト定数
+	static constexpr int HP_BAR_WIDTH = 100;
+	static constexpr int NAME_OFFSET_Y = 37;
+	static constexpr int HP_TEXT_OFFSET_Y = 20;
+	static constexpr int HP_BAR_OFFSET_Y = 5;
+
+	//DrawStatus 用の描画位置・オフセット定数
+	static constexpr int STATUS_NAME_X = 230;
+	static constexpr int STATUS_NAME_Y = 590;
+
+	// 左側：基本ステータス
+	static constexpr int BASE_PARAM_X = 245;
+	static constexpr int BASE_PARAM_START_Y = 615;
+	static constexpr int BASE_PARAM_LINE_HEIGHT = 25;
+
+	// 右側：技能ステータス
+	static constexpr int SKILL_PARAM_X = 1065;
+	static constexpr int SKILL_PARAM_START_Y = 510;
+	static constexpr int SKILL_PARAM_LINE_HEIGHT = 35;
+
+	// 中央右：職業・状態異常
+	static constexpr int JOB_STATUS_X = 900;
+	static constexpr int JOB_NAME_Y = 590;
+	static constexpr int CONDITION_LABEL_Y = 640;
+	static constexpr int CONDITION_VALUE_X = 955;
+
+	// 計算用定数
+	static constexpr int MAGIC_RANK_DIVISOR = 50; // 魔術ランク計算用（魔力 / 50 + 1）
+
+	// 技能計算の除数
+	constexpr static int PHARMACY_DIVISOR = 7;       // 薬学ボーナス除数
+	constexpr static int MARTIAL_ARTS_DIVISOR = 5;   // 武術ボーナス除数
+	constexpr static int FAITH_DIVISOR = 15;         // 信仰ボーナス除数
+	constexpr static int ARCHAEOLOGY_DIVISOR = 8;    // 考古学ボーナス除数
+	constexpr static int ASTROLOGY_DIVISOR = 5;      // 占星術ボーナス除数
+
+	// 定数設定（行間と各表示エリアの起点Y座標）
+	static constexpr int BASE_Y = 120;             // 基礎ステータスの表示起点Y
+	static constexpr int SKILL_BASE_Y = 310;       // 技能ステータスの表示起点Y
+	static constexpr int LINE_HEIGHT = 30;         // 行間
+	static constexpr int JOB_BONUS_OFFSET_X = 100; // 職業ボーナスの描画Xオフセット
+
+	// ラベル描画位置と、数字を揃えたいX座標（位置に合わせて数値を調整してください）
+	static constexpr int LABEL_X = STATUS_X;        // 項目名のX座標
+	static constexpr int VALUE_X = STATUS_X + 120;  // 数字の描画開始X座標（固定）
+
+	//ルートボーナス
+	static constexpr float DEFAULT_SKILL_MULTIPLIER = 1.0f;
+	static constexpr float ROUTE_SPECIALTY_MULTIPLIER = 1.8f; // 特化ルート用（1.8倍）
+	static constexpr float ROUTE_SELFLESS_MULTIPLIER = 1.5f;  // 無欲ルート用（1.5倍）
+
+	int level_ = 1;
+	int exp_ = 0;
+	int maxHp_ = 10;
+	int hp_ = maxHp_;
+	int power_ = 10;
+	int magic_ = 10;
+	int speed_ = 10;
+
+	int heal_ = 2;	//回復量
+
+	//技能の種類
+	enum class SkillType 
+	{
+		Pharmacy,		//薬学
+		MartialArts,	//武術
+		MagicKnowledge,	//魔法知識
+		Faith,			//信仰
+		Archaeology,	//考古学
+		Astrology		//占星術
+	};
+
+	//技能ステータス
+	int pharmacy_ = 0;
+	int martialArts_ = 0;
+	int magicKnowledge_ = 0;
+	int faith_ = 0;
+	int archaeology_ = 0;
+	int astrology_ = 0;
+
+	// 追加：ボーナス計算付きのポイント獲得関数
+	int AddSkillPoint(SkillType type, int baseAmount);
+
+	//追加効果の種類
+	enum class BonusType 
+	{
+		ItemBonus,   //薬学　　：回復効果上昇
+		AttackBonus, //武術　　：会心発生率上昇
+		MagicBonus,  //魔法知識：魔法の使用許可
+		DefenseBonus,//信仰　　：ダメージ軽減量
+		ExpBonus,    //考古学　：獲得経験値上昇
+		LuckBonus    //占星術　：回避率上昇
+	};
+
+	//職業ごとのステータスボーナス
+	struct JobBonus 
+	{
+		int hp = 0;
+		int power = 0;
+		int magic = 0;
+		int speed = 0;
+	};
+	PLAYER_ROUTE currentRoute_ = PLAYER_ROUTE::NONE; //現在のルート
+
+	//技能ボーナス用の補正倍率（初期値は1.0倍）
+	float attackMultiplier_ = 1.0f;//攻撃力補正
+	float maxHpMultiplier_ = 1.0f; //最大HP補正
+	float maxMpMultiplier_ = 1.0f; //最大MP補正
+	float speedMultiplier_ = 1.0f; //素早さ・回避補正
+
+	std::string job = "見習い魔女";	//現在の職業
+	std::vector<JobData> jobList;	//職業リストを作成
+
+	PlayerStatus();
+
+	//更新処理
+	void Update();
+
+	void Draw();//描画処理
+	void DrawStatus();//ステータスの描画処理
+	void DrawQuestImages();//クエスト用の画像などを描画する処理
+
+	int Attack();//攻撃処理
+	int MagicAttack();//魔法攻撃処理
+
+	STATUS_EFFECT GetStatusEffect() const;	//状態異常を取得
+	void SetStatusEffect(STATUS_EFFECT effect);	//状態以上をセットする
+
+	//回復処理
+	void Heal(int amount);
+	void FullHeal();
+
+	void Damage(int damage);//ダメージ処理
+	void Death();	//死亡処理
+
+	int GetMaxHp();//HPを外から参照できるようにする
+	int GetSpeed();//速度を外から参照できるようにする
+	void GetExp(int exp);//経験値処理
+
+	//レベルアップした時の処理
+	void LevelUp();
+
+	//職業関連
+	void InitJob();//職業の初期化
+	bool JobCheck(const JobData& job);//転職可能かどうかを判定する関数
+	int SkillBonus(BonusType type, int baseValue);//技能ごとの追加効果を処理する関数
+	JobBonus GetJobBonus();//現在の職業に応じたステータスボーナスを計算する関数
+	void SetJob(std::string newJobName) { job = newJobName; }//職業名を書き換える
+	//ユニークスキル用のフラグ
+	bool hasStartDamage = false;  //開幕固定ダメ
+	bool hasFirstHitNull = false; //初撃無効
+	bool hasMagicUnlock = false;  //魔法制限なし
+	bool hasCritBoost = false;    //クリティカル倍率上昇
+	bool hasMagicToAttack = false;//攻撃時に魔力加算
+	bool hasAutoRegen = false;    //リジェネ
+	bool hasGuts = false;         //根性（HP1で耐える）
+	//スキルの「消費」を管理するフラグ
+	bool isFirstHitUsed = false;  //初撃無効を消費したか
+	bool isGutsUsed = false;      //根性を消費したか
+
+	const std::vector<JobData>& GetJobList() const { return jobList; }//全職業リストを外から参照できるようにする
+	std::string GetName() const { return name; }					  //プレイヤーの名前を外から参照できるようにする
+	std::string GetJobName() const { return job; }					  //現在の職業名を外から参照できるようにする
+
+	//攻撃アニメーションの処理
+	void AttackAnimation();
+
+	//ダメージアニメーションの処理
+	void DamageAnimation();
+
+	bool hasChallengedHellQuest_ = false; //激ムズクエストに挑戦したかどうかのフラグ
+private:
+	std::string name = "ルピナス";	//プレイヤーの名前
+
+	STATUS_EFFECT statusEffect_;//状態異常を管理する変数
+
+	int bgImageBar_;				//背景画像のハンドル
+	int battlePlayer_;	//プレイヤーの画像を格納
+
+	int attackMotionTimer_ = 0; // 演出用のタイマー（フレーム数）
+	int playerPosX_ = PLAYER_POS_X;           // 画像を左にずらすピクセル数
+
+	int damageMotionTimer_ = 0; // ダメージ演出用のタイマー（フレーム数）
+};
